@@ -151,6 +151,58 @@ def calculate_summary_metrics(equity_curve, base_amounts=(20, 50, 100, 200, 300)
     return metrics
 
 
+def calculate_buy_hold(period_data, amount, risk_free_rate=0.0):
+    """Lump-sum buy-and-hold benchmark for one period.
+
+    Invests `amount` at the first trading day's (adjusted) close and holds to the
+    end. Unlike DCA, all capital is deployed on day one (full time in market), so
+    its total return is simply the period's price return.
+
+    Args:
+        period_data: DataFrame with a "Close" column (period slice).
+        amount: Total lump sum to invest (e.g. same total as the fixed DCA).
+        risk_free_rate: Annual risk-free rate for Sharpe.
+
+    Returns:
+        dict of metrics with the same keys used by the report tables, plus an
+        "equity" Series (portfolio value over time).
+    """
+    close = period_data["Close"]
+    first, last = float(close.iloc[0]), float(close.iloc[-1])
+    shares = amount / first
+    value = shares * close                      # portfolio value over time
+    final_value = float(value.iloc[-1])
+    profit = final_value - amount
+    total_return = final_value / amount - 1.0
+
+    days = max((close.index[-1] - close.index[0]).days, 1)
+    annualized = (last / first) ** (365.0 / days) - 1.0
+
+    daily_ret = close.pct_change().dropna()
+    vol = float(daily_ret.std() * np.sqrt(TRADING_DAYS)) if len(daily_ret) > 1 else 0.0
+    if len(daily_ret) > 1 and daily_ret.std() > 0:
+        rf_daily = risk_free_rate / TRADING_DAYS
+        sharpe = float((daily_ret - rf_daily).mean() / daily_ret.std()
+                       * np.sqrt(TRADING_DAYS))
+    else:
+        sharpe = 0.0
+
+    return {
+        "total_invested": amount,
+        "final_value": final_value,
+        "profit": profit,
+        "total_return": total_return,
+        "total_shares": shares,
+        "avg_cost_per_share": first,
+        "ending_price": last,
+        "annualized_return": annualized,
+        "max_drawdown": calculate_max_drawdown(value),
+        "volatility": vol,
+        "sharpe": sharpe,
+        "equity": value,
+    }
+
+
 def calculate_period_comparison(dynamic_metrics, fixed_metrics, years,
                                 equalcap_metrics=None):
     """Compare dynamic vs fixed strategy for one period.

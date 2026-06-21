@@ -153,7 +153,30 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   {% endfor %}
 </table>
 
-<h2>五、给普通投资者的 {{ advice_list | length }} 个核心建议</h2>
+<h2>五、买入持有（B&H）对比：一次性 vs 分批投入</h2>
+{{ analysis_buyhold | safe }}
+<table>
+  <tr><th>周期</th><th>B&H<br>总收益率</th><th>固定定投<br>总收益率</th><th>动态定投<br>总收益率</th>
+      <th>B&H<br>最终金额</th><th>固定定投<br>最终金额</th><th>动态定投<br>最终金额</th>
+      <th>B&H − 固定<br>最终差额</th><th>B&H<br>最大回撤</th></tr>
+  {% for r in buyhold_rows %}
+  <tr>
+    <td>{{ r.years }}年</td>
+    <td>{{ '%.2f' % (r.bh_total_return * 100) }}%</td>
+    <td>{{ '%.2f' % (r.fixed_total_return * 100) }}%</td>
+    <td>{{ '%.2f' % (r.dynamic_total_return * 100) }}%</td>
+    <td>{{ '{:,.0f}'.format(r.bh_final_value) }}</td>
+    <td>{{ '{:,.0f}'.format(r.fixed_final_value) }}</td>
+    <td>{{ '{:,.0f}'.format(r.dynamic_final_value) }}</td>
+    <td class="{{ 'pos' if r.bh_vs_fixed_final >= 0 else 'neg' }}">{{ '{:,.0f}'.format(r.bh_vs_fixed_final) }}</td>
+    <td>{{ '%.2f' % (r.bh_max_drawdown * 100) }}%</td>
+  </tr>
+  {% endfor %}
+</table>
+<p style="font-size:14px;color:#666;">注：B&H 投入的总金额与「固定100定投」相同，但在首日一次性买入；
+   其总收益率即该周期的价格涨幅，与投入金额无关。净值曲线见下一节（绿色虚线）。</p>
+
+<h2>六、给普通投资者的 {{ advice_list | length }} 个核心建议</h2>
 <div class="advice">
 {% for a in advice_list %}
 <h3>{{ loop.index }}. {{ a.title | safe }}</h3>
@@ -161,14 +184,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 {% endfor %}
 </div>
 
-<h2>六、组合净值曲线</h2>
+<h2>七、组合净值曲线（含 B&H 对比）</h2>
 {% for years in period_list %}
 <h3>{{ years }}年：组合价值与累计投入</h3>
 <img src="charts/{{ charts['equity_curve_' ~ years ~ 'y'] }}" alt="{{ years }}年净值曲线">
 {% endfor %}
-<p>{{ analysis_equity | safe }}</p>
+<p>{{ analysis_equity | safe }}图中绿色虚线为「买入持有(B&H)」的组合价值，便于直观对比一次性投入与分批投入。</p>
 
-<h2>七、定投行为分析：它到底什么时候加码？</h2>
+<h2>八、定投行为分析：它到底什么时候加码？</h2>
 <img src="charts/{{ charts.price_markers }}" alt="价格与买入标记">
 {% for years in period_list %}
 <img src="charts/{{ charts['dynamic_contribution_' ~ years ~ 'y'] }}" alt="{{ years }}年每日投入">
@@ -182,15 +205,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   {% endfor %}
 </table>
 
-<h2>八、回撤分析：加码会不会扛不住？</h2>
+<h2>九、回撤分析：加码会不会扛不住？</h2>
 {% for years in period_list %}
 <img src="charts/{{ charts['drawdown_' ~ years ~ 'y'] }}" alt="{{ years }}年回撤">
 {% endfor %}
 <p>{{ analysis_drawdown | safe }}</p>
 
-<h2>九、专业指标明细</h2>
+<h2>十、专业指标明细</h2>
 <p style="font-size:14px;color:#666;">说明：「等额(同动态)」即等额基准——投入与动态策略相同的总本金、但每天均匀投入；
-   它的总收益率与「固定100」相同（仅本金规模不同），用于隔离纯择时效果。</p>
+   它的总收益率与「固定100」相同（仅本金规模不同），用于隔离纯择时效果。
+   「买入持有(B&H)」为首日一次性投入相同总额并持有。</p>
 <table>
   <tr><th>周期</th><th>策略</th><th>最终金额</th><th>总收益率</th><th>年化<br>(XIRR)</th>
       <th>最大回撤</th><th>年化<br>波动率</th><th>夏普</th><th>累计份额</th><th>平均成本</th></tr>
@@ -209,7 +233,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   {% endfor %}
 </table>
 
-<h2>十、最后总结</h2>
+<h2>十一、最后总结</h2>
 <div class="lead">{{ conclusion | safe }}</div>
 
 <div class="note">
@@ -301,6 +325,34 @@ def build_advice(comparisons, results, currency, asset_label="纳斯达克"):
 
 def _fmt_money(x):
     return f"{x:,.0f}"
+
+
+def build_buyhold_analysis(buyhold_rows, currency, asset_label):
+    """Narrative comparing lump-sum buy & hold vs the DCA strategies."""
+    longest = max(buyhold_rows, key=lambda r: r["years"])
+    bh_beats_fixed = sum(1 for r in buyhold_rows if r["bh_vs_fixed_final"] > 0)
+    n = len(buyhold_rows)
+    verdict = ("在多数周期里都跑赢了分批定投" if bh_beats_fixed >= n / 2
+               else "并未在多数周期里跑赢分批定投")
+
+    lead = (
+        f"买入持有（B&H）：在回测<strong>首个交易日</strong>，用与「固定100定投」相同的总金额"
+        f"<strong>一次性买入 {asset_label} 并持有</strong>到期末。它与分批定投最大的区别是："
+        f"资金在第一天就全部到位、全程在场（full time in market），而定投是逐日把钱投进去的。"
+    )
+    body = (
+        f"以最长 {longest['years']} 年周期为例，B&H 最终金额约 "
+        f"<span class='hot'>{_fmt_money(longest['bh_final_value'])}</span> {currency}，"
+        f"固定定投约 {_fmt_money(longest['fixed_final_value'])} {currency}，"
+        f"二者相差约 {_fmt_money(longest['bh_vs_fixed_final'])} {currency}。"
+        f"在长期上涨的行情里，B&H {verdict}——因为它的钱在场时间更长。"
+        "但这并不意味着 B&H 一定更优："
+        "<strong>① 它要求你第一天就有全部本金</strong>（定投的优势恰恰是用现金流逐步投入）；"
+        "<strong>② 一次性买在高点会立刻承受全部回撤</strong>，定投则把成本摊平、心理压力更小。"
+        "因此 B&H 与定投并非「谁绝对更好」，而是<strong>适用场景不同</strong>："
+        "有整笔闲钱、能扛回撤 → 倾向 B&H；靠工资逐月投入、想摊平成本 → 倾向定投。"
+    )
+    return f"<p>{lead}</p><p>{body}</p>"
 
 
 def build_analysis_text(comparisons, results, currency):

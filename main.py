@@ -170,8 +170,14 @@ def main(asset=None, signal=None, label=None):
 
         comp = metrics.calculate_period_comparison(dyn_m, fix_m, y, equalcap_metrics=eq_m)
 
-        results[y] = {"dynamic": dyn_ec, "fixed": fix_ec, "equalcap": eq_ec}
-        metrics_all[y] = {"dynamic": dyn_m, "fixed": fix_m, "equalcap": eq_m}
+        # Buy & hold benchmark: lump-sum invest the SAME total as the fixed-100
+        # DCA on day one, then hold (full time in market).
+        bh_m = metrics.calculate_buy_hold(pdata, fix_m["total_invested"], risk_free_rate=rf)
+
+        results[y] = {"dynamic": dyn_ec, "fixed": fix_ec, "equalcap": eq_ec,
+                      "buyhold_equity": bh_m["equity"]}
+        metrics_all[y] = {"dynamic": dyn_m, "fixed": fix_m, "equalcap": eq_m,
+                          "buyhold": bh_m}
         comparisons.append(comp)
 
         # Per-period trade logs.
@@ -294,7 +300,7 @@ def _build_and_write_report(config, currency, base_amount, end_date, earliest,
     metric_rows = []
     for y in periods:
         for strat, name in (("dynamic", "动态"), ("fixed", "固定100"),
-                            ("equalcap", "等额(同动态)")):
+                            ("equalcap", "等额(同动态)"), ("buyhold", "买入持有(B&H)")):
             m = metrics_all[y][strat]
             metric_rows.append({
                 "years": y, "strategy": name,
@@ -304,6 +310,22 @@ def _build_and_write_report(config, currency, base_amount, end_date, earliest,
                 "sharpe": m["sharpe"], "total_shares": m["total_shares"],
                 "avg_cost_per_share": m["avg_cost_per_share"],
             })
+
+    # Buy & hold comparison rows (lump-sum same total as fixed-100 DCA).
+    buyhold_rows = []
+    for y in periods:
+        bh = metrics_all[y]["buyhold"]
+        fix = metrics_all[y]["fixed"]
+        dyn = metrics_all[y]["dynamic"]
+        buyhold_rows.append({
+            "years": y,
+            "bh_total_return": bh["total_return"], "bh_final_value": bh["final_value"],
+            "bh_max_drawdown": bh["max_drawdown"],
+            "fixed_total_return": fix["total_return"], "fixed_final_value": fix["final_value"],
+            "dynamic_total_return": dyn["total_return"], "dynamic_final_value": dyn["final_value"],
+            "bh_vs_fixed_final": bh["final_value"] - fix["final_value"],
+            "bh_vs_dynamic_final": bh["final_value"] - dyn["final_value"],
+        })
 
     # Profit-decomposition rows: extra profit = timing alpha + capital effect.
     decomposition_rows = []
@@ -342,6 +364,7 @@ def _build_and_write_report(config, currency, base_amount, end_date, earliest,
     headline_main = report.build_headline(comparisons)
     advice_list = report.build_advice(comparisons, results, currency,
                                       asset_label=asset_label)
+    analysis_buyhold = report.build_buyhold_analysis(buyhold_rows, currency, asset_label)
 
     csv_base = meta["csv_base"]
     csv_files = [
@@ -372,6 +395,8 @@ def _build_and_write_report(config, currency, base_amount, end_date, earliest,
         "dynamic_rules": rule_rows,
         "comparisons": comparisons,
         "metric_rows": metric_rows,
+        "buyhold_rows": buyhold_rows,
+        "analysis_buyhold": analysis_buyhold,
         "decomposition_rows": decomposition_rows,
         "contribution_count_rows": contribution_count_rows,
         "data_quality_rows": data_quality_rows,

@@ -38,7 +38,11 @@ python main.py
 仓库 `docs/` 目录已作为静态站点发布，可直接在线查看：
 
 - 纳斯达克（^IXIC，信号=标的）：**https://cozec.github.io/toutiao_dca_backtest/**
+- QQQ（信号=^IXIC，标的=QQQ）：**https://cozec.github.io/toutiao_dca_backtest/qqq/**
 - TQQQ（信号=^IXIC，标的=TQQQ 3倍做多）：**https://cozec.github.io/toutiao_dca_backtest/tqqq/**
+
+每份报告均额外包含一个「买入持有（B&H）」对照：在首个交易日一次性投入与固定100定投
+相同的总金额并持有到期末，用于对比一次性投入 vs 分批定投。
 
 ## 信号与标的分离
 

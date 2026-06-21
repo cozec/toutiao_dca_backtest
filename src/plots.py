@@ -181,13 +181,20 @@ def plot_extra_profit(comparisons, currency, out_path):
     _save(fig, out_path)
 
 
-def plot_equity_curve(dyn_ec, fix_ec, years, currency, out_path):
-    """Equity curves plus cumulative invested capital for one period."""
+def plot_equity_curve(dyn_ec, fix_ec, years, currency, out_path, bh_value=None):
+    """Equity curves plus cumulative invested capital for one period.
+
+    If `bh_value` (a buy & hold portfolio-value Series) is given, it is drawn as
+    a green dashed line for a lump-sum vs. DCA comparison.
+    """
     fig, ax = plt.subplots(figsize=(10, 5.5))
     ax.plot(dyn_ec.index, dyn_ec["portfolio_value"], color=DYNAMIC_COLOR,
             label="动态定投 组合价值", linewidth=1.6)
     ax.plot(fix_ec.index, fix_ec["portfolio_value"], color=FIXED_COLOR,
             label="固定100定投 组合价值", linewidth=1.6)
+    if bh_value is not None:
+        ax.plot(bh_value.index, bh_value.values, color="#2ca02c",
+                label="买入持有(B&H) 组合价值", linestyle="--", linewidth=1.5)
     ax.plot(dyn_ec.index, dyn_ec["cumulative_invested"], color=DYNAMIC_COLOR,
             label="动态定投 累计投入", linestyle="--", linewidth=1.1, alpha=0.7)
     ax.plot(fix_ec.index, fix_ec["cumulative_invested"], color=FIXED_COLOR,
@@ -282,7 +289,8 @@ def generate_all_charts(results, comparisons, currency, charts_dir, asset="纳�
         dyn_ec, fix_ec = res["dynamic"], res["fixed"]
 
         fn = f"equity_curve_{years}y.png"
-        plot_equity_curve(dyn_ec, fix_ec, years, currency, p(fn))
+        plot_equity_curve(dyn_ec, fix_ec, years, currency, p(fn),
+                          bh_value=res.get("buyhold_equity"))
         paths[f"equity_curve_{years}y"] = fn
 
         fn = f"dynamic_contribution_{years}y.png"
