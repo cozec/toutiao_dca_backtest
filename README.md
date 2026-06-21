@@ -30,7 +30,13 @@ pip install -r requirements.txt
 python main.py
 ```
 
-运行后打开 `results/report.html` 查看完整报告。
+运行后打开 `results/report.html` 查看完整报告。运行同时会把报告与图表发布到 `docs/`
+（`docs/index.html` + `docs/charts/`），用于 GitHub Pages 静态托管。
+
+## 在线报告（GitHub Pages）
+
+仓库 `docs/` 目录已作为静态站点发布，可直接在线查看报告：
+**https://cozec.github.io/toutiao_dca_backtest/**
 
 ## 配置（config.yaml）
 

@@ -4,4 +4,5 @@ __pycache__/
 data/
 results/
 logs/
-*.png
+# Source screenshots (large, not needed in repo). docs/ is published and tracked.
+Screenshot*.png

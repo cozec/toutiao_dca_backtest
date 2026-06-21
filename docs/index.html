@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>纳斯达克动态跌幅加码定投 vs 每日固定100定投：yfinance真实数据回测报告</title>
+<style>
+  :root { --red:#e02e24; --red-soft:#fdecea; --ink:#1f2329; --gray:#8a9099; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif;
+         line-height: 1.85; color: var(--ink); margin: 0; background: #f2f3f5;
+         font-size: 17px; -webkit-font-smoothing: antialiased; }
+  .page { max-width: 680px; margin: 0 auto; background: #fff; padding: 30px 22px 70px;
+          box-shadow: 0 0 18px rgba(0,0,0,.05); }
+  h1 { font-size: 24px; line-height: 1.45; font-weight: 800; margin: 0 0 14px; }
+  .byline { color: var(--gray); font-size: 13px; border-bottom: 1px solid #eee;
+            padding-bottom: 16px; margin-bottom: 8px; }
+  h2 { font-size: 20px; font-weight: 800; color: var(--red); margin: 40px 0 6px;
+       padding-left: 12px; border-left: 4px solid var(--red); }
+  h3 { font-size: 17px; font-weight: 700; color: var(--ink); margin: 26px 0 6px; }
+  p { margin: 12px 0; }
+  .lead { background: var(--red-soft); border-radius: 10px; padding: 16px 18px; margin: 16px 0;
+          font-size: 16px; }
+  .lead ul { margin: 8px 0 0; padding-left: 20px; }
+  .lead li { margin: 6px 0; }
+  .note { background: #fff8e6; border-left: 4px solid #f0ad4e; padding: 12px 16px;
+          margin: 18px 0; border-radius: 6px; font-size: 15px; }
+  .advice { background: #f6f8fa; border-radius: 10px; padding: 6px 20px 14px; margin: 16px 0; }
+  .advice h3 { color: var(--red); }
+  table { border-collapse: collapse; width: 100%; margin: 18px 0; font-size: 13px; background: #fff;
+          display: block; overflow-x: auto; white-space: nowrap; }
+  th, td { border: 1px solid #ebedf0; padding: 8px 10px; text-align: right; }
+  th { background: #fafafa; color: #555; text-align: center; font-weight: 700; }
+  td:first-child, th:first-child { text-align: center; font-weight: 600; }
+  tr:nth-child(even) td { background: #fbfcfd; }
+  img { max-width: 100%; height: auto; display: block; margin: 16px auto;
+        border: 1px solid #f0f0f0; border-radius: 8px; }
+  .hot { color: var(--red); font-weight: 800; }
+  .pos { color: var(--red); font-weight: 700; }
+  .neg { color: #1aa06d; font-weight: 700; }
+  code { background: #f2f3f5; padding: 1px 6px; border-radius: 4px; font-size: 14px; }
+  pre { background: #1f2329; color: #e6e6e6; padding: 14px; border-radius: 8px;
+        overflow-x: auto; font-size: 12px; line-height: 1.6; white-space: pre; }
+  details { margin: 12px 0; }
+  summary { cursor: pointer; font-weight: 700; color: #555; }
+  footer { margin-top: 56px; padding-top: 18px; border-top: 1px solid #eee;
+           color: var(--gray); font-size: 13px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="page">
+
+<h1>纳斯达克动态跌幅加码定投 vs 每日固定100定投：yfinance真实数据回测报告</h1>
+<div class="byline">数据来源：yfinance &nbsp;·&nbsp; 标的：^IXIC（纳斯达克综合指数）
+   &nbsp;·&nbsp; 截止：2026-06-17 &nbsp;·&nbsp; 单位：元
+   &nbsp;·&nbsp; 生成：2026-06-20 18:02<br>
+   思路来源（原文）：<a href="https://www.toutiao.com/article/7646398901649441314/?app=news_article&category_new=__all__&module_name=iOS_tt_others&req_id_new=202606140422425B466B585F97453348F2&share_did=MS4wLjACAAAA1iChiRlAp17J_0Afz1ZLL2QPOFf3to05sthA82a5zF4&share_token=f0d7ddf4-6765-11f1-b20b-00163e056d31&share_uid=MS4wLjABAAAATT9aCUOj3uCkHZKubrocEQ49I-HmhBgq3IKHchgr0o4&timestamp=1781382295&tt_from=sys_share&upstream_biz=iOS_others&utm_campaign=client_share&utm_medium=toutiao_ios&utm_source=sys_share&source=m_redirect" target="_blank" rel="noopener">头条原文链接</a></div>
+
+<p>本文的策略思路来自<a href="https://www.toutiao.com/article/7646398901649441314/?app=news_article&category_new=__all__&module_name=iOS_tt_others&req_id_new=202606140422425B466B585F97453348F2&share_did=MS4wLjACAAAA1iChiRlAp17J_0Afz1ZLL2QPOFf3to05sthA82a5zF4&share_token=f0d7ddf4-6765-11f1-b20b-00163e056d31&share_uid=MS4wLjABAAAATT9aCUOj3uCkHZKubrocEQ49I-HmhBgq3IKHchgr0o4&timestamp=1781382295&tt_from=sys_share&upstream_biz=iOS_others&utm_campaign=client_share&utm_medium=toutiao_ios&utm_source=sys_share&source=m_redirect" target="_blank" rel="noopener">这篇头条文章</a>，
+   但所有数据均使用 yfinance 重新下载、所有结果均为本项目独立计算。
+   今天用纳斯达克这块真实数据，把 3/5/10/20年 四个回测周期跑了一遍——
+   不靠任何主观择时，只比较两种「每天都买」的日定投方式，看看
+   <strong class="hot">跌多就加码</strong>到底有没有用，得出的是一份完整、可复现的回测报告。</p>
+
+<h2>一、核心结论：20年多赚约 <span class='hot'>34.5万</span>！</h2>
+<div class="lead">
+<p>本报告使用 yfinance 的真实历史数据，对纳斯达克标的 <code>^IXIC</code> 回测了 3年、5年、10年、20年 共 4 个周期，截止日为 2026-06-17。对比「动态跌幅加码定投」与「每日固定100定投」两种策略。</p><ul><li>动态策略表现最好的周期是 <strong>20年</strong>，超额收益率 +10.50%。</li><li>按收益率：动态策略在多数周期内收益率略有优势。</li><li>按绝对收益金额：动态策略在多数周期内绝对收益更高。</li><li>以最长 20 年周期看，动态策略多赚约 345,341 元；用「等额基准」拆解后，其中仅约 58,836 元（17%）来自下跌加码的<strong>择时</strong>，其余约 286,505 元（83%）来自<strong>多投入的本金</strong>。</li><li><strong>核心结论：动态策略多赚的钱，大头来自单纯投入更多本金，择时本身带来的纯超额收益相对有限。</strong></li></ul>
+</div>
+
+<h2>二、定投策略的规则</h2>
+<h3>策略 1：每日固定 100 定投</h3>
+<p>不管纳斯达克涨还是跌，每个交易日<strong>雷打不动</strong>投入 100 元，
+   以当日（复权）收盘价买入，允许小数股，持有到期末不卖出。这是最简单、最机械的定投方式。</p>
+<h3>策略 2：动态跌幅加码定投（跌多加仓、涨多少投）</h3>
+<p>完全根据当日<strong>同日收盘涨跌幅</strong>调整当天投入金额：
+   <strong class="hot">跌得越多、买得越多；涨得越多、买得越少。</strong></p>
+<table>
+  <tr><th>当日涨跌幅</th><th>当日投入（元）</th></tr>
+  
+  <tr><td>跌幅超过 2%</td><td>300</td></tr>
+  
+  <tr><td>跌幅 1%–2%</td><td>200</td></tr>
+  
+  <tr><td>涨跌幅 -1% 到 +1%</td><td>100</td></tr>
+  
+  <tr><td>涨幅 1%–2%</td><td>50</td></tr>
+  
+  <tr><td>涨幅超过 2%</td><td>20</td></tr>
+  
+</table>
+
+<h2>三、核心回测结果：3/5/10/20年 一表看清</h2>
+<table>
+  <tr>
+    <th>投资<br>周期</th><th>动态定投<br>总收益率</th><th>固定100定投<br>总收益率</th>
+    <th>动态策略<br>超额收益率</th><th>动态策略<br>多赚金额</th>
+    <th>动态策略<br>总投入</th><th>固定定投<br>总投入</th>
+    <th>动态策略<br>最终金额</th><th>固定定投<br>最终金额</th>
+  </tr>
+  
+  <tr>
+    <td>3年</td>
+    <td>44.81%</td>
+    <td>44.08%</td>
+    <td class="pos">+0.73%</td>
+    <td class="pos">3,840</td>
+    <td>82,540</td>
+    <td>75,200</td>
+    <td>119,525</td>
+    <td>108,346</td>
+  </tr>
+  
+  <tr>
+    <td>5年</td>
+    <td>70.49%</td>
+    <td>68.26%</td>
+    <td class="pos">+2.24%</td>
+    <td class="pos">14,862</td>
+    <td>142,700</td>
+    <td>125,600</td>
+    <td>243,294</td>
+    <td>211,332</td>
+  </tr>
+  
+  <tr>
+    <td>10年</td>
+    <td>154.67%</td>
+    <td>156.17%</td>
+    <td class="neg">-1.50%</td>
+    <td class="pos">37,774</td>
+    <td>278,260</td>
+    <td>251,400</td>
+    <td>708,654</td>
+    <td>644,020</td>
+  </tr>
+  
+  <tr>
+    <td>20年</td>
+    <td>509.03%</td>
+    <td>498.53%</td>
+    <td class="pos">+10.50%</td>
+    <td class="pos">345,341</td>
+    <td>560,570</td>
+    <td>503,100</td>
+    <td>3,414,018</td>
+    <td>3,011,207</td>
+  </tr>
+  
+</table>
+<img src="charts/return_rate_comparison.png" alt="总收益率对比">
+<p>按<strong>收益率</strong>看，动态跌幅加码策略在 20 年周期的超额收益率最高，为 +10.50%；在 10 年周期表现相对最弱，超额收益率为 -1.50%。可见不同周期下收益率差异有所不同，需结合绝对收益一起判断。</p>
+
+<h2>四、两个口径的收益差异！差距比想象更大</h2>
+<img src="charts/profit_amount_comparison.png" alt="总收益金额对比">
+<p>按<strong>绝对收益金额</strong>看，差距比收益率明显得多。以 20 年周期为例，动态策略最终金额约 3,414,018 元，固定策略约 3,011,207 元，动态策略多赚约 345,341 元。但要注意：动态策略同期总投入约 560,570 元，比固定策略多投入约 57,470 元。也就是说，两种策略<strong>投入的本金并不相等</strong>，直接比最终金额并不公平——下一节用「等额基准」把这笔多赚的钱拆开来看。</p>
+<img src="charts/excess_return_rate.png" alt="超额收益率走势">
+<img src="charts/extra_profit.png" alt="多赚金额走势">
+
+<h3>收益拆解：择时 vs 多投入的本金（等额基准法）</h3>
+<p>为了把「择时」和「多投入的本金」分开，我们引入第三个对照组——<strong>等额基准</strong>：它投入与动态策略<strong>完全相同的总本金</strong>，但像固定定投一样<strong>每天均匀投入</strong>。这样一来，等额基准与动态策略的本金一模一样，二者的差异就只剩「<strong>什么时候把钱投进去</strong>」，即纯粹的择时能力。<br><br>以 20 年为例，动态策略相对固定100定投共多赚约 <span class='hot'>345,341</span> 元，可拆为两部分：<br>① <strong>择时 alpha</strong>（动态 − 等额基准，本金相同）：约 <span class='hot'>58,836</span> 元，占 17%；<br>② <strong>多投入本金的贡献</strong>（等额基准 − 固定100，本金更多）：约 <span class='hot'>286,505</span> 元，占 83%。<br><br>可见所谓「多赚」中，真正归功于跌幅加码<strong>择时</strong>的部分往往只是小头，大头其实来自<strong>单纯投入了更多钱</strong>。这也提醒我们：评价一个加码策略，应该用「本金相同」的口径比较，而不是直接比最终金额。</p>
+<img src="charts/profit_decomposition.png" alt="多赚金额拆解">
+<table>
+  <tr><th>周期</th><th>多赚总额</th><th>择时 alpha</th><th>占比</th>
+      <th>多投本金贡献</th><th>占比</th></tr>
+  
+  <tr>
+    <td>3年</td>
+    <td class="pos">3,840</td>
+    <td class="pos">604</td>
+    <td>16%</td>
+    <td>3,235</td>
+    <td>84%</td>
+  </tr>
+  
+  <tr>
+    <td>5年</td>
+    <td class="pos">14,862</td>
+    <td class="pos">3,190</td>
+    <td>21%</td>
+    <td>11,672</td>
+    <td>79%</td>
+  </tr>
+  
+  <tr>
+    <td>10年</td>
+    <td class="pos">37,774</td>
+    <td class="neg">-4,174</td>
+    <td>-11%</td>
+    <td>41,948</td>
+    <td>111%</td>
+  </tr>
+  
+  <tr>
+    <td>20年</td>
+    <td class="pos">345,341</td>
+    <td class="pos">58,836</td>
+    <td>17%</td>
+    <td>286,505</td>
+    <td>83%</td>
+  </tr>
+  
+</table>
+
+<h2>五、给普通投资者的 4 个核心建议</h2>
+<div class="advice">
+
+<h3>1. 长期定投（越久越值），可优先用跌幅加码策略</h3>
+<p>20年周期里，动态策略多赚约 <span class='hot'>34.5万</span> 元，时间越长、纳斯达克这种长牛标的，加码累积的低位筹码效果越明显。</p>
+
+<h3>2. 别把超额收益想得太高，差距主要在「绝对金额」而非「收益率」</h3>
+<p>动态策略的总收益率与固定定投往往只差几个百分点，甚至个别周期还略低（如 10年 -1.50%）。真正拉开差距的是它在下跌时投入了更多本金，做大了总盘子。</p>
+
+<h3>3. 看清「多赚」的真正来源：择时其实只占一小部分</h3>
+<p>用「等额基准」（投入与动态完全相同的总本金、但每天均匀投）拆解后发现：20年里动态策略多赚的钱中，只有约 <span class='hot'>17%</span> 来自下跌加码带来的更低成本（真正的择时 alpha），其余约 <span class='hot'>83%</span> 仅仅是因为它<strong>投入了更多本金</strong>。别把多投入的钱误当成择时能力。</p>
+
+<h3>4. 最重要的不是公式，而是「熊市里坚持投下去」</h3>
+<p>再精巧的加码规则，也比不上长期不中断的纪律。对普通人来说，<strong>坚持定投穿越熊市</strong>，远比策略细节更决定最终结果。</p>
+
+</div>
+
+<h2>六、组合净值曲线</h2>
+
+<h3>3年：组合价值与累计投入</h3>
+<img src="charts/equity_curve_3y.png" alt="3年净值曲线">
+
+<h3>5年：组合价值与累计投入</h3>
+<img src="charts/equity_curve_5y.png" alt="5年净值曲线">
+
+<h3>10年：组合价值与累计投入</h3>
+<img src="charts/equity_curve_10y.png" alt="10年净值曲线">
+
+<h3>20年：组合价值与累计投入</h3>
+<img src="charts/equity_curve_20y.png" alt="20年净值曲线">
+
+<p>从净值曲线可以看出，动态策略的「组合价值」与「累计投入」两条线，都会因为在下跌期加大投入而高于固定策略。两条净值曲线的形状高度相似，说明动态策略主要影响的是投入节奏与规模，而非彻底改变收益结构。</p>
+
+<h2>七、定投行为分析：它到底什么时候加码？</h2>
+<img src="charts/nasdaq_price_with_dynamic_buy_markers_20y.png" alt="价格与买入标记">
+
+<img src="charts/dynamic_contribution_3y.png" alt="3年每日投入">
+
+<img src="charts/dynamic_contribution_5y.png" alt="5年每日投入">
+
+<img src="charts/dynamic_contribution_10y.png" alt="10年每日投入">
+
+<img src="charts/dynamic_contribution_20y.png" alt="20年每日投入">
+
+<p>在 20 年周期里，动态策略触发「跌幅超2%、投300」的天数约 318 天，触发「涨幅超2%、投20」的天数约 266 天。大跌日相对少见，但正是这些日子贡献了更低的买入成本；由于大涨与大跌日都属少数，绝大多数交易日仍按 100 投入，因此动态策略确实抬高了总投入规模，但幅度有限。</p>
+<table>
+  <tr><th>周期</th><th>投300天数</th><th>投200天数</th><th>投100天数</th><th>投50天数</th><th>投20天数</th></tr>
+  
+  <tr><td>3年</td><td>41</td><td>73</td>
+      <td>494</td><td>112</td><td>32</td></tr>
+  
+  <tr><td>5年</td><td>94</td><td>142</td>
+      <td>753</td><td>182</td><td>85</td></tr>
+  
+  <tr><td>10年</td><td>163</td><td>225</td>
+      <td>1644</td><td>344</td><td>138</td></tr>
+  
+  <tr><td>20年</td><td>318</td><td>480</td>
+      <td>3310</td><td>657</td><td>266</td></tr>
+  
+</table>
+
+<h2>八、回撤分析：加码会不会扛不住？</h2>
+
+<img src="charts/drawdown_3y.png" alt="3年回撤">
+
+<img src="charts/drawdown_5y.png" alt="5年回撤">
+
+<img src="charts/drawdown_10y.png" alt="10年回撤">
+
+<img src="charts/drawdown_20y.png" alt="20年回撤">
+
+<p>从回撤曲线看，两种策略以组合价值计的回撤路径非常接近——因为它们持有的是同一标的。动态策略在熊市中持续加大投入，短期账面回撤未必更小，但更低的平均成本有助于在反弹时更快回本。</p>
+
+<h2>九、专业指标明细</h2>
+<p style="font-size:14px;color:#666;">说明：「等额(同动态)」即等额基准——投入与动态策略相同的总本金、但每天均匀投入；
+   它的总收益率与「固定100」相同（仅本金规模不同），用于隔离纯择时效果。</p>
+<table>
+  <tr><th>周期</th><th>策略</th><th>最终金额</th><th>总收益率</th><th>年化<br>(XIRR)</th>
+      <th>最大回撤</th><th>年化<br>波动率</th><th>夏普</th><th>累计份额</th><th>平均成本</th></tr>
+  
+  <tr>
+    <td>3年</td><td>动态</td>
+    <td>119,525</td>
+    <td>44.81%</td>
+    <td>26.30%</td>
+    <td>-15.60%</td>
+    <td>20.24%</td>
+    <td>1.17</td>
+    <td>4.59</td>
+    <td>17969.63</td>
+  </tr>
+  
+  <tr>
+    <td>3年</td><td>固定100</td>
+    <td>108,346</td>
+    <td>44.08%</td>
+    <td>25.91%</td>
+    <td>-18.30%</td>
+    <td>20.24%</td>
+    <td>1.17</td>
+    <td>4.16</td>
+    <td>18060.94</td>
+  </tr>
+  
+  <tr>
+    <td>3年</td><td>等额(同动态)</td>
+    <td>118,921</td>
+    <td>44.08%</td>
+    <td>25.91%</td>
+    <td>-18.30%</td>
+    <td>20.24%</td>
+    <td>1.17</td>
+    <td>4.57</td>
+    <td>18060.94</td>
+  </tr>
+  
+  <tr>
+    <td>5年</td><td>动态</td>
+    <td>243,294</td>
+    <td>70.49%</td>
+    <td>21.32%</td>
+    <td>-20.78%</td>
+    <td>22.60%</td>
+    <td>0.65</td>
+    <td>9.35</td>
+    <td>15262.55</td>
+  </tr>
+  
+  <tr>
+    <td>5年</td><td>固定100</td>
+    <td>211,332</td>
+    <td>68.26%</td>
+    <td>21.22%</td>
+    <td>-21.66%</td>
+    <td>22.60%</td>
+    <td>0.65</td>
+    <td>8.12</td>
+    <td>15465.33</td>
+  </tr>
+  
+  <tr>
+    <td>5年</td><td>等额(同动态)</td>
+    <td>240,104</td>
+    <td>68.26%</td>
+    <td>21.22%</td>
+    <td>-21.66%</td>
+    <td>22.60%</td>
+    <td>0.65</td>
+    <td>9.23</td>
+    <td>15465.33</td>
+  </tr>
+  
+  <tr>
+    <td>10年</td><td>动态</td>
+    <td>708,654</td>
+    <td>154.67%</td>
+    <td>18.13%</td>
+    <td>-28.23%</td>
+    <td>22.10%</td>
+    <td>0.88</td>
+    <td>27.23</td>
+    <td>10217.66</td>
+  </tr>
+  
+  <tr>
+    <td>10年</td><td>固定100</td>
+    <td>644,020</td>
+    <td>156.17%</td>
+    <td>18.00%</td>
+    <td>-29.67%</td>
+    <td>22.10%</td>
+    <td>0.88</td>
+    <td>24.75</td>
+    <td>10157.83</td>
+  </tr>
+  
+  <tr>
+    <td>10年</td><td>等额(同动态)</td>
+    <td>712,828</td>
+    <td>156.17%</td>
+    <td>18.00%</td>
+    <td>-29.67%</td>
+    <td>22.10%</td>
+    <td>0.88</td>
+    <td>27.39</td>
+    <td>10157.83</td>
+  </tr>
+  
+  <tr>
+    <td>20年</td><td>动态</td>
+    <td>3,414,018</td>
+    <td>509.03%</td>
+    <td>15.74%</td>
+    <td>-34.84%</td>
+    <td>22.17%</td>
+    <td>0.68</td>
+    <td>131.20</td>
+    <td>4272.67</td>
+  </tr>
+  
+  <tr>
+    <td>20年</td><td>固定100</td>
+    <td>3,011,207</td>
+    <td>498.53%</td>
+    <td>15.68%</td>
+    <td>-37.73%</td>
+    <td>22.17%</td>
+    <td>0.68</td>
+    <td>115.72</td>
+    <td>4347.59</td>
+  </tr>
+  
+  <tr>
+    <td>20年</td><td>等额(同动态)</td>
+    <td>3,355,182</td>
+    <td>498.53%</td>
+    <td>15.68%</td>
+    <td>-37.73%</td>
+    <td>22.17%</td>
+    <td>0.68</td>
+    <td>128.94</td>
+    <td>4347.59</td>
+  </tr>
+  
+</table>
+
+<h2>十、最后总结</h2>
+<div class="lead"><p>在最长的 20 年周期里，动态跌幅加码策略的收益率比固定定投高 10.50%，最终金额多约 402,811 元。</p><p>需要明确指出：动态策略在以下周期的收益率<strong>低于</strong>固定定投：10年(-1.50%)。</p><p>综合来看，动态策略「多赚的钱」由两部分构成：一是下跌时多买带来的<strong>更低平均成本（择时 alpha）</strong>，二是整体<strong>投入了更多本金</strong>。通过「等额基准」（同样多投本金、但均匀投入）拆解，20年里择时只贡献了约 17%，多投入本金贡献了约 83%——<strong>后者才是更大的来源</strong>。</p><p><strong>给普通投资者的实用建议：</strong>最重要的事情是在熊市里坚持持续投入，而不是纠结于具体的加码公式。策略的精巧程度，远不如长期坚持来得重要。</p></div>
+
+<div class="note">
+⚠️ <strong>重要假设说明：</strong>本回测默认使用「当日涨跌幅作为信号、并以当日收盘价成交」
+（<code>same_day_close</code>）。这便于复现，但真实交易中通常难以严格执行，
+除非采用临近收盘的估算价下单。可在 <code>config.yaml</code> 中改为
+<code>next_day_close</code>（次日收盘成交）。价格使用 yfinance 自动复权收盘价，已处理分红与拆股；
+默认无税费、无佣金（0 bps）、无滑点（0 bps），允许小数股。
+</div>
+
+<h2>附录</h2>
+<details><summary>数据质量报告</summary>
+<table>
+  <tr><th>周期</th><th>交易日数</th><th>起始日</th><th>结束日</th><th>起始点位</th><th>结束点位</th></tr>
+  
+  <tr><td>3年</td><td>752</td><td>2023-06-20</td>
+      <td>2026-06-17</td><td>13667.29</td><td>26021.66</td></tr>
+  
+  <tr><td>5年</td><td>1256</td><td>2021-06-17</td>
+      <td>2026-06-17</td><td>14161.35</td><td>26021.66</td></tr>
+  
+  <tr><td>10年</td><td>2514</td><td>2016-06-17</td>
+      <td>2026-06-17</td><td>4800.34</td><td>26021.66</td></tr>
+  
+  <tr><td>20年</td><td>5031</td><td>2006-06-19</td>
+      <td>2026-06-17</td><td>2110.42</td><td>26021.66</td></tr>
+  
+</table>
+</details>
+<details><summary>完整配置（config.yaml）</summary>
+<pre>ticker: ^IXIC
+benchmark_ticker: ^IXIC
+end_date: null
+periods_years:
+- 3
+- 5
+- 10
+- 20
+base_daily_amount: 100
+currency_label: 元
+execution_timing: same_day_close
+allow_fractional_shares: true
+commission_bps: 0
+slippage_bps: 0
+risk_free_rate: 0.0
+report_language: zh
+dynamic_dca_rules:
+- min_return: null
+  max_return: -0.02
+  amount: 300
+  label: 跌幅超过2%，定投300
+- min_return: -0.02
+  max_return: -0.01
+  amount: 200
+  label: 跌幅1%-2%，定投200
+- min_return: -0.01
+  max_return: 0.01
+  amount: 100
+  label: 涨跌幅-1%到1%，定投100
+- min_return: 0.01
+  max_return: 0.02
+  amount: 50
+  label: 涨幅1%-2%，定投50
+- min_return: 0.02
+  max_return: null
+  amount: 20
+  label: 涨幅超过2%，定投20
+</pre>
+</details>
+<details><summary>输出文件清单（CSV）</summary>
+<ul><li><code>results/tables/summary_comparison.csv</code></li><li><code>results/tables/metrics_dynamic.csv</code></li><li><code>results/tables/metrics_fixed.csv</code></li><li><code>results/tables/data_quality_report.csv</code></li><li><code>results/equity_curves_dynamic.csv</code></li><li><code>results/equity_curves_fixed.csv</code></li><li><code>results/tables/trade_log_dynamic_3y.csv</code></li><li><code>results/tables/trade_log_fixed_3y.csv</code></li><li><code>results/tables/trade_log_dynamic_5y.csv</code></li><li><code>results/tables/trade_log_fixed_5y.csv</code></li><li><code>results/tables/trade_log_dynamic_10y.csv</code></li><li><code>results/tables/trade_log_fixed_10y.csv</code></li><li><code>results/tables/trade_log_dynamic_20y.csv</code></li><li><code>results/tables/trade_log_fixed_20y.csv</code></li></ul>
+</details>
+
+<footer>本报告由本地 Python 项目基于 yfinance 真实数据自动生成，仅供研究参考，不构成投资建议。</footer>
+</div>
+</body>
+</html>

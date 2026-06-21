@@ -8,6 +8,8 @@ generates results/report.html.
 """
 
 import logging
+import os
+import shutil
 from datetime import datetime
 from functools import partial
 
@@ -140,8 +142,30 @@ def main():
                             metrics_all, chart_paths, exec_timing,
                             commission_bps, slippage_bps)
 
-    # --- 6. Console summary. ---
+    # --- 6. Publish a static page (docs/) for GitHub Pages. ---
+    _publish_to_docs()
+
+    # --- 7. Console summary. ---
     _print_console_summary(ticker, end_date, earliest, comparisons, currency)
+
+
+def _publish_to_docs():
+    """Copy the report + charts into docs/ as a static GitHub Pages site.
+
+    GitHub Pages can serve from the /docs folder on the main branch. The report
+    references charts via the relative path "charts/...", so copying report.html
+    to docs/index.html and the charts to docs/charts/ keeps all images working.
+    """
+    docs = project_path("docs")
+    docs_charts = project_path("docs", "charts")
+    ensure_dirs(docs_charts)
+    shutil.copyfile(project_path("results", "report.html"),
+                    project_path("docs", "index.html"))
+    for png in sorted(os.listdir(project_path("results", "charts"))):
+        if png.endswith(".png"):
+            shutil.copyfile(project_path("results", "charts", png),
+                            os.path.join(docs_charts, png))
+    logging.getLogger("nasdaq_dca").info("Published static site: %s", docs)
 
 
 def _write_csv_tables(results, metrics_all, comparisons, tables_dir):
