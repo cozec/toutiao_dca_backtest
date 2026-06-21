@@ -21,6 +21,9 @@ DYNAMIC_COLOR = "#d9534f"
 FIXED_COLOR = "#337ab7"
 INVESTED_COLOR = "#7f8c8d"
 
+# Asset display label used in chart titles. Set per-run via generate_all_charts.
+ASSET_LABEL = "纳斯达克"
+
 
 def _setup_cjk_font():
     """Pick a CJK-capable font available on the system for matplotlib."""
@@ -55,6 +58,11 @@ def _period_labels(periods):
     return [f"{y}年" for y in periods]
 
 
+def _periods_str(comparisons):
+    """e.g. '3/5/10/20' from the available comparison periods."""
+    return "/".join(str(c["years"]) for c in comparisons)
+
+
 def plot_return_rate_comparison(comparisons, out_path):
     """Grouped bar chart of total return rate, dynamic vs fixed."""
     periods = [c["years"] for c in comparisons]
@@ -67,7 +75,7 @@ def plot_return_rate_comparison(comparisons, out_path):
     w = 0.38
     b1 = ax.bar([i - w / 2 for i in x], dyn, w, label="动态跌幅加码定投", color=DYNAMIC_COLOR)
     b2 = ax.bar([i + w / 2 for i in x], fix, w, label="每日固定100定投", color=FIXED_COLOR)
-    ax.set_title("纳斯达克3/5/10/20年定投策略总收益率对比", fontsize=14)
+    ax.set_title(f"{ASSET_LABEL}{_periods_str(comparisons)}年定投策略总收益率对比", fontsize=14)
     ax.set_xlabel("投资周期")
     ax.set_ylabel("总收益率 (%)")
     ax.set_xticks(list(x))
@@ -99,7 +107,7 @@ def plot_profit_amount_comparison(comparisons, currency, out_path):
     b1 = ax.bar([i - w for i in x], dyn, w, label="动态跌幅加码定投", color=DYNAMIC_COLOR)
     b2 = ax.bar(list(x), eq, w, label="等额基准(同动态总本金,均匀投)", color="#e8a33d")
     b3 = ax.bar([i + w for i in x], fix, w, label="每日固定100定投", color=FIXED_COLOR)
-    ax.set_title("纳斯达克3/5/10/20年定投策略总收益金额对比", fontsize=14)
+    ax.set_title(f"{ASSET_LABEL}{_periods_str(comparisons)}年定投策略总收益金额对比", fontsize=14)
     ax.set_xlabel("投资周期")
     ax.set_ylabel(f"收益金额 ({currency})")
     ax.set_xticks(list(x))
@@ -184,7 +192,7 @@ def plot_equity_curve(dyn_ec, fix_ec, years, currency, out_path):
             label="动态定投 累计投入", linestyle="--", linewidth=1.1, alpha=0.7)
     ax.plot(fix_ec.index, fix_ec["cumulative_invested"], color=FIXED_COLOR,
             label="固定定投 累计投入", linestyle="--", linewidth=1.1, alpha=0.7)
-    ax.set_title(f"纳斯达克{years}年定投组合价值与累计投入", fontsize=14)
+    ax.set_title(f"{ASSET_LABEL}{years}年定投组合价值与累计投入", fontsize=14)
     ax.set_xlabel("日期")
     ax.set_ylabel(f"金额 ({currency})")
     ax.legend(loc="upper left", fontsize=9)
@@ -195,7 +203,7 @@ def plot_dynamic_contribution(dyn_ec, years, currency, out_path):
     """Daily dynamic contribution amount over time for one period."""
     fig, ax = plt.subplots(figsize=(10, 4.5))
     ax.scatter(dyn_ec.index, dyn_ec["contribution"], s=6, color=DYNAMIC_COLOR, alpha=0.6)
-    ax.set_title(f"纳斯达克{years}年动态定投每日投入金额", fontsize=14)
+    ax.set_title(f"{ASSET_LABEL}{years}年动态定投每日投入金额", fontsize=14)
     ax.set_xlabel("日期")
     ax.set_ylabel(f"每日投入 ({currency})")
     _save(fig, out_path)
@@ -207,12 +215,12 @@ def plot_price_with_markers(dyn_ec, years, out_path):
     low = dyn_ec[dyn_ec["contribution"] <= 50]
 
     fig, ax = plt.subplots(figsize=(11, 5.5))
-    ax.plot(dyn_ec.index, dyn_ec["close"], color="#34495e", linewidth=1.0, label="纳斯达克收盘价")
+    ax.plot(dyn_ec.index, dyn_ec["close"], color="#34495e", linewidth=1.0, label=f"{ASSET_LABEL}收盘价")
     ax.scatter(high.index, high["close"], s=14, color=DYNAMIC_COLOR,
                label="高投入日 (200/300)", alpha=0.7, zorder=3)
     ax.scatter(low.index, low["close"], s=10, color=FIXED_COLOR,
                label="低投入日 (20/50)", alpha=0.5, zorder=2)
-    ax.set_title(f"纳斯达克{years}年价格与动态定投买入标记", fontsize=14)
+    ax.set_title(f"{ASSET_LABEL}{years}年价格与动态定投买入标记", fontsize=14)
     ax.set_xlabel("日期")
     ax.set_ylabel("指数点位")
     ax.legend(loc="upper left", fontsize=9)
@@ -228,14 +236,14 @@ def plot_drawdown(dyn_ec, fix_ec, years, out_path):
     ax.plot(dyn_dd.index, dyn_dd, color=DYNAMIC_COLOR, label="动态定投回撤", linewidth=1.4)
     ax.plot(fix_dd.index, fix_dd, color=FIXED_COLOR, label="固定100定投回撤", linewidth=1.4)
     ax.fill_between(dyn_dd.index, dyn_dd, 0, color=DYNAMIC_COLOR, alpha=0.12)
-    ax.set_title(f"纳斯达克{years}年定投组合回撤对比", fontsize=14)
+    ax.set_title(f"{ASSET_LABEL}{years}年定投组合回撤对比", fontsize=14)
     ax.set_xlabel("日期")
     ax.set_ylabel("回撤 (%)")
     ax.legend(loc="lower left", fontsize=9)
     _save(fig, out_path)
 
 
-def generate_all_charts(results, comparisons, currency, charts_dir):
+def generate_all_charts(results, comparisons, currency, charts_dir, asset="纳斯达克"):
     """Generate every chart and return a dict of relative filenames.
 
     Args:
@@ -243,10 +251,13 @@ def generate_all_charts(results, comparisons, currency, charts_dir):
         comparisons: list of comparison dicts (ordered by period).
         currency: currency label.
         charts_dir: output directory for charts.
+        asset: display label of the invested asset, used in chart titles.
 
     Returns:
         dict mapping logical chart name to filename (basename).
     """
+    global ASSET_LABEL
+    ASSET_LABEL = asset
     paths = {}
 
     def p(name):

@@ -1,7 +1,10 @@
 # Configuration for the Nasdaq dynamic dip-buying DCA backtest.
 # All parameters are read by main.py and the src modules.
 
-ticker: "^IXIC"            # Investment/signal ticker. Options: ^IXIC, QQQ, SPY, TQQQ
+ticker: "^IXIC"            # Asset that is actually bought. Options: ^IXIC, QQQ, SPY, TQQQ
+signal_ticker: null        # Ticker whose daily return drives contributions.
+                           # null = same as `ticker`. CLI --signal overrides this.
+                           # e.g. signal=^IXIC + ticker=TQQQ: Nasdaq dip signal, buy TQQQ.
 benchmark_ticker: "^IXIC"  # Reserved for future benchmark comparison
 end_date: null             # null = latest available trading day; or "YYYY-MM-DD"
 periods_years: [3, 5, 10, 20]

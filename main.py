@@ -1,12 +1,19 @@
 """Orchestrate the Nasdaq dynamic DCA backtest end to end.
 
-Run with:  python main.py
+Run with:
+    python main.py                                  # uses config.yaml defaults
+    python main.py --asset TQQQ --signal ^IXIC      # buy TQQQ, signal = Nasdaq
+
+The signal (the daily return that drives the dynamic contribution amount) can
+differ from the asset that is actually bought. When they differ, outputs are
+namespaced (results/<label>/, docs/<label>/) so other reports are preserved.
 
 Downloads fresh yfinance data, backtests fixed-100 daily DCA vs dynamic
 dip-buying DCA over the configured periods, writes CSV tables and charts, and
-generates results/report.html.
+generates an HTML report (also published to docs/ for GitHub Pages).
 """
 
+import argparse
 import logging
 import os
 import shutil
@@ -32,19 +39,31 @@ ARTICLE_URL = (
     "&source=m_redirect"
 )
 
+# Full names (byline) and short labels (chart titles / prose).
 TICKER_NAMES = {
     "^IXIC": "纳斯达克综合指数",
     "QQQ": "纳斯达克100 ETF",
     "SPY": "标普500 ETF",
     "TQQQ": "纳斯达克100三倍做多 ETF",
 }
+CHART_LABELS = {
+    "^IXIC": "纳斯达克",
+    "QQQ": "纳斯达克100(QQQ)",
+    "SPY": "标普500(SPY)",
+    "TQQQ": "TQQQ(3倍做多纳指)",
+}
+LEVERAGED = {"TQQQ"}
 
 
-def main():
+def main(asset=None, signal=None, label=None):
     config = load_config()
     logger = setup_logging(project_path("logs", "backtest.log"))
 
-    ticker = config["ticker"]
+    # Resolve asset (bought) and signal (drives contribution) tickers.
+    asset_ticker = asset or config["ticker"]
+    signal_ticker = signal or config.get("signal_ticker") or asset_ticker
+    decoupled = signal_ticker != asset_ticker
+
     currency = config["currency_label"]
     base_amount = config["base_daily_amount"]
     periods = sorted(config["periods_years"])
@@ -55,8 +74,25 @@ def main():
     commission_bps = config["commission_bps"]
     slippage_bps = config["slippage_bps"]
 
-    charts_dir = project_path("results", "charts")
-    tables_dir = project_path("results", "tables")
+    asset_label = CHART_LABELS.get(asset_ticker, asset_ticker)
+    signal_label = CHART_LABELS.get(signal_ticker, signal_ticker)
+    leveraged = asset_ticker in LEVERAGED
+
+    # Output namespace: empty (root) for the default config asset, else a slug
+    # so additional reports do not overwrite the existing one.
+    if label is not None:
+        slug = label
+    elif asset_ticker == config["ticker"] and not decoupled:
+        slug = ""
+    else:
+        slug = asset_ticker.replace("^", "").lower()
+
+    results_base = project_path("results", slug) if slug else project_path("results")
+    docs_base = project_path("docs", slug) if slug else project_path("docs")
+    charts_dir = os.path.join(results_base, "charts")
+    tables_dir = os.path.join(results_base, "tables")
+    report_path = os.path.join(results_base, "report.html")
+    csv_base = f"results/{slug}" if slug else "results"
     ensure_dirs(charts_dir, tables_dir, project_path("data", "raw"),
                 project_path("data", "processed"))
 
@@ -64,25 +100,35 @@ def main():
     max_years = max(periods)
     start_dl = (pd.Timestamp.today() - pd.DateOffset(years=max_years + 1)
                 ).strftime("%Y-%m-%d")
-    raw = data_loader.download_yfinance_data(ticker, start_dl, config["end_date"])
-    raw.to_csv(project_path("data", "raw", f"{ticker.replace('^', '')}_raw.csv"))
 
+    raw = data_loader.download_yfinance_data(asset_ticker, start_dl, config["end_date"])
+    raw.to_csv(project_path("data", "raw", f"{asset_ticker.replace('^', '')}_raw.csv"))
     price = data_loader.clean_price_data(raw)
-    price.to_csv(project_path("data", "processed", f"{ticker.replace('^', '')}_clean.csv"))
+    price.to_csv(project_path("data", "processed",
+                              f"{asset_ticker.replace('^', '')}_clean.csv"))
+
+    # Signal returns (same ticker -> reuse asset; else download separately).
+    if decoupled:
+        sig_raw = data_loader.download_yfinance_data(signal_ticker, start_dl, config["end_date"])
+        sig_raw.to_csv(project_path("data", "raw", f"{signal_ticker.replace('^', '')}_raw.csv"))
+        signal_returns = data_loader.clean_price_data(sig_raw)["daily_return"]
+        logger.info("Signal=%s decoupled from asset=%s", signal_ticker, asset_ticker)
+    else:
+        signal_returns = None
 
     end_date = price.index.max()
     earliest = price.index.min()
-    logger.info("Data ready: %s rows, %s to %s",
+    logger.info("Asset data ready: %s rows, %s to %s",
                 len(price), earliest.date(), end_date.date())
 
-    # Drop periods we cannot cover and warn.
+    # Drop periods we cannot cover and warn (e.g. TQQQ has no 20y history).
     available_periods = []
     for y in periods:
         need_start = end_date - pd.DateOffset(years=y)
         if need_start < earliest:
-            logger.warning("Not enough data for %d-year period (need from %s, "
-                           "have from %s) -- skipping.", y, need_start.date(),
-                           earliest.date())
+            logger.warning("Not enough %s data for %d-year period (need from %s, "
+                           "have from %s) -- skipping.", asset_ticker, y,
+                           need_start.date(), earliest.date())
         else:
             available_periods.append(y)
     if not available_periods:
@@ -99,6 +145,10 @@ def main():
 
     for y in periods:
         pdata = data_loader.get_period_data(price, y, end_date)
+        if signal_returns is not None:
+            # Use the SIGNAL's daily return to drive contributions, but keep the
+            # ASSET's Close for execution and valuation.
+            pdata["daily_return"] = signal_returns.reindex(pdata.index)
 
         dyn_ec = backtest.run_dca_backtest(
             pdata, dynamic_fn, exec_timing, allow_frac, commission_bps, slippage_bps)
@@ -125,54 +175,60 @@ def main():
         comparisons.append(comp)
 
         # Per-period trade logs.
-        dyn_ec.to_csv(project_path("results", "tables", f"trade_log_dynamic_{y}y.csv"))
-        fix_ec.to_csv(project_path("results", "tables", f"trade_log_fixed_{y}y.csv"))
+        dyn_ec.to_csv(os.path.join(tables_dir, f"trade_log_dynamic_{y}y.csv"))
+        fix_ec.to_csv(os.path.join(tables_dir, f"trade_log_fixed_{y}y.csv"))
 
     comparisons.sort(key=lambda c: c["years"])
 
     # --- 3. Write CSV tables. ---
-    _write_csv_tables(results, metrics_all, comparisons, tables_dir)
+    _write_csv_tables(results, metrics_all, comparisons, results_base, tables_dir)
 
     # --- 4. Charts. ---
-    chart_paths = plots.generate_all_charts(results, comparisons, currency, charts_dir)
+    chart_paths = plots.generate_all_charts(
+        results, comparisons, currency, charts_dir, asset=asset_label)
 
     # --- 5. HTML report. ---
-    _build_and_write_report(config, ticker, currency, base_amount, end_date,
-                            earliest, periods, rules, comparisons, results,
-                            metrics_all, chart_paths, exec_timing,
-                            commission_bps, slippage_bps)
+    meta = {
+        "asset_ticker": asset_ticker, "asset_label": asset_label,
+        "signal_ticker": signal_ticker, "signal_label": signal_label,
+        "decoupled": decoupled, "leveraged": leveraged, "csv_base": csv_base,
+    }
+    _build_and_write_report(config, currency, base_amount, end_date, earliest,
+                            periods, rules, comparisons, results, metrics_all,
+                            chart_paths, exec_timing, commission_bps,
+                            slippage_bps, meta, report_path)
 
     # --- 6. Publish a static page (docs/) for GitHub Pages. ---
-    _publish_to_docs()
+    _publish_to_docs(results_base, docs_base)
 
     # --- 7. Console summary. ---
-    _print_console_summary(ticker, end_date, earliest, comparisons, currency)
+    _print_console_summary(asset_ticker, signal_ticker, end_date, earliest,
+                           comparisons, currency, report_path)
 
 
-def _publish_to_docs():
+def _publish_to_docs(results_base, docs_base):
     """Copy the report + charts into docs/ as a static GitHub Pages site.
 
-    GitHub Pages can serve from the /docs folder on the main branch. The report
-    references charts via the relative path "charts/...", so copying report.html
-    to docs/index.html and the charts to docs/charts/ keeps all images working.
+    The report references charts via the relative path "charts/...", so copying
+    report.html to <docs_base>/index.html and the charts to <docs_base>/charts/
+    keeps all images working.
     """
-    docs = project_path("docs")
-    docs_charts = project_path("docs", "charts")
+    docs_charts = os.path.join(docs_base, "charts")
     ensure_dirs(docs_charts)
-    shutil.copyfile(project_path("results", "report.html"),
-                    project_path("docs", "index.html"))
-    for png in sorted(os.listdir(project_path("results", "charts"))):
+    shutil.copyfile(os.path.join(results_base, "report.html"),
+                    os.path.join(docs_base, "index.html"))
+    src_charts = os.path.join(results_base, "charts")
+    for png in sorted(os.listdir(src_charts)):
         if png.endswith(".png"):
-            shutil.copyfile(project_path("results", "charts", png),
+            shutil.copyfile(os.path.join(src_charts, png),
                             os.path.join(docs_charts, png))
-    logging.getLogger("nasdaq_dca").info("Published static site: %s", docs)
+    logging.getLogger("nasdaq_dca").info("Published static site: %s", docs_base)
 
 
-def _write_csv_tables(results, metrics_all, comparisons, tables_dir):
+def _write_csv_tables(results, metrics_all, comparisons, results_base, tables_dir):
     """Write summary, per-strategy metrics, data-quality, and equity-curve CSVs."""
-    # Summary comparison.
     pd.DataFrame(comparisons).to_csv(
-        project_path("results", "tables", "summary_comparison.csv"), index=False)
+        os.path.join(tables_dir, "summary_comparison.csv"), index=False)
 
     # Per-strategy metrics (one row per period).
     for strat in ("dynamic", "fixed", "equalcap"):
@@ -184,7 +240,7 @@ def _write_csv_tables(results, metrics_all, comparisons, tables_dir):
                         for amt, cnt in m[strat]["contribution_counts"].items()})
             rows.append(row)
         pd.DataFrame(rows).sort_values("years").to_csv(
-            project_path("results", "tables", f"metrics_{strat}.csv"), index=False)
+            os.path.join(tables_dir, f"metrics_{strat}.csv"), index=False)
 
     # Data quality report.
     dq = []
@@ -197,7 +253,7 @@ def _write_csv_tables(results, metrics_all, comparisons, tables_dir):
             "missing_days": int(ec["close"].isna().sum()),
         })
     pd.DataFrame(dq).sort_values("years").to_csv(
-        project_path("results", "tables", "data_quality_report.csv"), index=False)
+        os.path.join(tables_dir, "data_quality_report.csv"), index=False)
 
     # Combined equity curves (long format).
     for strat in ("dynamic", "fixed", "equalcap"):
@@ -206,14 +262,18 @@ def _write_csv_tables(results, metrics_all, comparisons, tables_dir):
             f = res[strat][["portfolio_value", "cumulative_invested", "profit"]].copy()
             f["years"] = y
             frames.append(f)
-        pd.concat(frames).to_csv(project_path("results", f"equity_curves_{strat}.csv"))
+        pd.concat(frames).to_csv(os.path.join(results_base, f"equity_curves_{strat}.csv"))
 
 
-def _build_and_write_report(config, ticker, currency, base_amount, end_date,
-                            earliest, periods, rules, comparisons, results,
-                            metrics_all, chart_paths, exec_timing,
-                            commission_bps, slippage_bps):
+def _build_and_write_report(config, currency, base_amount, end_date, earliest,
+                            periods, rules, comparisons, results, metrics_all,
+                            chart_paths, exec_timing, commission_bps,
+                            slippage_bps, meta, report_path):
     """Assemble the Jinja2 context and render the HTML report."""
+    asset_ticker = meta["asset_ticker"]
+    asset_label = meta["asset_label"]
+    signal_label = meta["signal_label"]
+
     # Dynamic rule table rows (human-readable ranges).
     rule_rows = []
     for r in rules:
@@ -249,10 +309,8 @@ def _build_and_write_report(config, ticker, currency, base_amount, end_date,
     decomposition_rows = []
     for c in comparisons:
         decomposition_rows.append({
-            "years": c["years"],
-            "extra_profit": c["extra_profit"],
-            "timing_alpha": c["timing_alpha"],
-            "capital_effect": c["capital_effect"],
+            "years": c["years"], "extra_profit": c["extra_profit"],
+            "timing_alpha": c["timing_alpha"], "capital_effect": c["capital_effect"],
             "timing_alpha_share": c["timing_alpha_share"],
             "capital_effect_share": c["capital_effect_share"],
         })
@@ -278,25 +336,34 @@ def _build_and_write_report(config, ticker, currency, base_amount, end_date,
 
     analysis = report.build_analysis_text(comparisons, results, currency)
     exec_summary = report.build_executive_summary(
-        comparisons, ticker, end_date.date(), results, currency)
+        comparisons, asset_ticker, end_date.date(), results, currency,
+        asset_label=asset_label, signal_label=signal_label)
     conclusion = report.build_conclusion(comparisons, currency)
     headline_main = report.build_headline(comparisons)
-    advice_list = report.build_advice(comparisons, results, currency)
+    advice_list = report.build_advice(comparisons, results, currency,
+                                      asset_label=asset_label)
 
+    csv_base = meta["csv_base"]
     csv_files = [
-        "results/tables/summary_comparison.csv",
-        "results/tables/metrics_dynamic.csv",
-        "results/tables/metrics_fixed.csv",
-        "results/tables/data_quality_report.csv",
-        "results/equity_curves_dynamic.csv",
-        "results/equity_curves_fixed.csv",
-    ] + [f"results/tables/trade_log_{s}_{y}y.csv"
+        f"{csv_base}/tables/summary_comparison.csv",
+        f"{csv_base}/tables/metrics_dynamic.csv",
+        f"{csv_base}/tables/metrics_fixed.csv",
+        f"{csv_base}/tables/metrics_equalcap.csv",
+        f"{csv_base}/tables/data_quality_report.csv",
+        f"{csv_base}/equity_curves_dynamic.csv",
+        f"{csv_base}/equity_curves_fixed.csv",
+    ] + [f"{csv_base}/tables/trade_log_{s}_{y}y.csv"
          for y in periods for s in ("dynamic", "fixed")]
 
+    title = (f"{asset_label}动态跌幅加码定投 vs 每日固定{base_amount}定投："
+             f"yfinance真实数据回测报告")
+
     context = {
-        "title": "纳斯达克动态跌幅加码定投 vs 每日固定100定投：yfinance真实数据回测报告",
-        "article_url": ARTICLE_URL,
-        "ticker": ticker, "ticker_name": TICKER_NAMES.get(ticker, ticker),
+        "title": title, "article_url": ARTICLE_URL,
+        "ticker": asset_ticker, "ticker_name": TICKER_NAMES.get(asset_ticker, asset_ticker),
+        "asset_label": asset_label, "signal_label": signal_label,
+        "signal_ticker": meta["signal_ticker"], "decoupled": meta["decoupled"],
+        "leveraged": meta["leveraged"],
         "currency": currency, "base_amount": base_amount,
         "end_date": end_date.date(), "overall_start": earliest.date(),
         "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -319,15 +386,17 @@ def _build_and_write_report(config, ticker, currency, base_amount, end_date,
         "headline_main": headline_main,
         "advice_list": advice_list,
     }
-    report.generate_report(context, project_path("results", "report.html"))
+    report.generate_report(context, report_path)
 
 
-def _print_console_summary(ticker, end_date, earliest, comparisons, currency):
+def _print_console_summary(asset_ticker, signal_ticker, end_date, earliest,
+                           comparisons, currency, report_path):
     """Print a concise per-period summary to the console."""
     line = "=" * 72
     print(f"\n{line}")
     print("回测完成 | Data source: yfinance")
-    print(f"Ticker: {ticker} | 数据范围: {earliest.date()} -> {end_date.date()}")
+    print(f"信号: {signal_ticker} | 标的: {asset_ticker} | "
+          f"数据范围: {earliest.date()} -> {end_date.date()}")
     print(line)
     for c in comparisons:
         print(f"\n[{c['years']}年]")
@@ -340,9 +409,20 @@ def _print_console_summary(ticker, end_date, earliest, comparisons, currency):
         print(f"  超额收益率: {c['excess_return']*100:>+11.2f}%   "
               f"多赚金额:   {c['extra_profit']:>+12,.0f} {currency}")
     print(f"\n{line}")
-    print(f"报告已保存: {project_path('results', 'report.html')}")
+    print(f"报告已保存: {report_path}")
     print(line)
 
 
+def _parse_args():
+    p = argparse.ArgumentParser(description="Nasdaq dynamic DCA backtest")
+    p.add_argument("--asset", help="Ticker to buy (default: config ticker)")
+    p.add_argument("--signal", help="Ticker whose daily return drives contributions "
+                                    "(default: same as asset)")
+    p.add_argument("--label", help="Output namespace under results/ and docs/ "
+                                   "(default: auto from asset)")
+    return p.parse_args()
+
+
 if __name__ == "__main__":
-    main()
+    args = _parse_args()
+    main(asset=args.asset, signal=args.signal, label=args.label)

@@ -65,16 +65,25 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <div class="page">
 
 <h1>{{ title }}</h1>
-<div class="byline">数据来源：yfinance &nbsp;·&nbsp; 标的：{{ ticker }}（{{ ticker_name }}）
+<div class="byline">数据来源：yfinance &nbsp;·&nbsp; 信号：{{ signal_ticker }}（{{ signal_label }}）
+   &nbsp;·&nbsp; 标的：{{ ticker }}（{{ ticker_name }}）
    &nbsp;·&nbsp; 截止：{{ end_date }} &nbsp;·&nbsp; 单位：{{ currency }}
    &nbsp;·&nbsp; 生成：{{ generated_at }}<br>
    思路来源（原文）：<a href="{{ article_url }}" target="_blank" rel="noopener">头条原文链接</a></div>
 
 <p>本文的策略思路来自<a href="{{ article_url }}" target="_blank" rel="noopener">这篇头条文章</a>，
    但所有数据均使用 yfinance 重新下载、所有结果均为本项目独立计算。
-   今天用纳斯达克这块真实数据，把 {{ periods_text }} 四个回测周期跑了一遍——
+   本次回测用<strong>{{ signal_label }}</strong>的当日涨跌幅作为加码信号、买入标的为
+   <strong>{{ asset_label }}</strong>（{{ ticker }}），把 {{ periods_text }} 几个回测周期跑了一遍——
    不靠任何主观择时，只比较两种「每天都买」的日定投方式，看看
    <strong class="hot">跌多就加码</strong>到底有没有用，得出的是一份完整、可复现的回测报告。</p>
+{% if decoupled %}
+<div class="note">
+🔁 <strong>信号与标的分离：</strong>本报告的加码信号来自 <code>{{ signal_ticker }}</code>
+   （{{ signal_label }}）的日涨跌幅，但实际买入的是 <code>{{ ticker }}</code>（{{ asset_label }}）。
+   {% if leveraged %}<strong>注意 {{ ticker }} 为杠杆产品，存在波动损耗与更大回撤风险，长期持有风险显著高于指数本身。</strong>{% endif %}
+</div>
+{% endif %}
 
 <h2>一、核心结论：{{ headline_main | safe }}</h2>
 <div class="lead">
@@ -83,10 +92,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
 <h2>二、定投策略的规则</h2>
 <h3>策略 1：每日固定 {{ base_amount }} 定投</h3>
-<p>不管纳斯达克涨还是跌，每个交易日<strong>雷打不动</strong>投入 {{ base_amount }} {{ currency }}，
-   以当日（复权）收盘价买入，允许小数股，持有到期末不卖出。这是最简单、最机械的定投方式。</p>
+<p>不管{{ asset_label }}涨还是跌，每个交易日<strong>雷打不动</strong>投入 {{ base_amount }} {{ currency }}，
+   以当日（复权）收盘价买入 {{ asset_label }}，允许小数股，持有到期末不卖出。这是最简单、最机械的定投方式。</p>
 <h3>策略 2：动态跌幅加码定投（跌多加仓、涨多少投）</h3>
-<p>完全根据当日<strong>同日收盘涨跌幅</strong>调整当天投入金额：
+<p>完全根据 {{ signal_label }} 当日的<strong>同日收盘涨跌幅</strong>调整当天投入金额（买入标的为 {{ asset_label }}）：
    <strong class="hot">跌得越多、买得越多；涨得越多、买得越少。</strong></p>
 <table>
   <tr><th>当日涨跌幅</th><th>当日投入（{{ currency }}）</th></tr>
@@ -250,7 +259,7 @@ def build_headline(comparisons):
             f"<span class='hot'>{_wan(abs(longest['extra_profit']))}</span>")
 
 
-def build_advice(comparisons, results, currency):
+def build_advice(comparisons, results, currency, asset_label="纳斯达克"):
     """Build the 'core advice for ordinary investors' list from results."""
     longest = max(comparisons, key=lambda c: c["years"])
     losers = [c for c in comparisons if c["excess_return"] < 0]
@@ -264,7 +273,7 @@ def build_advice(comparisons, results, currency):
         "title": "长期定投（越久越值），可优先用跌幅加码策略",
         "body": (f"{longest['years']}年周期里，动态策略多赚约 "
                  f"<span class='hot'>{_wan(longest['extra_profit'])}</span> {currency}，"
-                 "时间越长、纳斯达克这种长牛标的，加码累积的低位筹码效果越明显。"),
+                 f"时间越长、{asset_label}这种长期向上的标的，加码累积的低位筹码效果越明显。"),
     })
     advice.append({
         "title": "别把超额收益想得太高，差距主要在「绝对金额」而非「收益率」",
@@ -389,7 +398,8 @@ def build_analysis_text(comparisons, results, currency):
     }
 
 
-def build_executive_summary(comparisons, ticker, end_date, results, currency):
+def build_executive_summary(comparisons, ticker, end_date, results, currency,
+                            asset_label="纳斯达克", signal_label="纳斯达克"):
     """Build the executive summary HTML block."""
     periods = sorted(c["years"] for c in comparisons)
     best = max(comparisons, key=lambda c: c["excess_return"])
@@ -407,7 +417,8 @@ def build_executive_summary(comparisons, ticker, end_date, results, currency):
     )
 
     return (
-        f"<p>本报告使用 yfinance 的真实历史数据，对纳斯达克标的 <code>{ticker}</code> "
+        f"<p>本报告使用 yfinance 的真实历史数据，以 {signal_label} 的日涨跌幅为加码信号、"
+        f"买入标的为 <code>{ticker}</code>（{asset_label}），"
         f"回测了 {'、'.join(str(p) + '年' for p in periods)} 共 {len(periods)} 个周期，"
         f"截止日为 {end_date}。对比「动态跌幅加码定投」与「每日固定100定投」两种策略。</p>"
         f"<ul>"

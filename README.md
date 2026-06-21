@@ -35,8 +35,24 @@ python main.py
 
 ## 在线报告（GitHub Pages）
 
-仓库 `docs/` 目录已作为静态站点发布，可直接在线查看报告：
-**https://cozec.github.io/toutiao_dca_backtest/**
+仓库 `docs/` 目录已作为静态站点发布，可直接在线查看：
+
+- 纳斯达克（^IXIC，信号=标的）：**https://cozec.github.io/toutiao_dca_backtest/**
+- TQQQ（信号=^IXIC，标的=TQQQ 3倍做多）：**https://cozec.github.io/toutiao_dca_backtest/tqqq/**
+
+## 信号与标的分离
+
+加码信号（驱动每日投入金额的日涨跌幅）可以与实际买入的标的不同：
+
+```bash
+# 用纳斯达克的日涨跌幅做加码信号，但实际买入 TQQQ
+python main.py --asset TQQQ --signal ^IXIC
+```
+
+输出会自动命名空间化到 `results/tqqq/` 与 `docs/tqqq/`，不会覆盖默认的纳斯达克报告。
+`--label` 可自定义命名空间。`signal_ticker` 也可在 `config.yaml` 中设置。
+注意杠杆产品（如 TQQQ）存在波动损耗与更大回撤风险，且历史较短（TQQQ 自 2010 年），
+不足覆盖的周期（如 20 年）会自动跳过并告警。
 
 ## 配置（config.yaml）
 
