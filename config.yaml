@@ -1,0 +1,46 @@
+# Configuration for the Nasdaq dynamic dip-buying DCA backtest.
+# All parameters are read by main.py and the src modules.
+
+ticker: "^IXIC"            # Investment/signal ticker. Options: ^IXIC, QQQ, SPY, TQQQ
+benchmark_ticker: "^IXIC"  # Reserved for future benchmark comparison
+end_date: null             # null = latest available trading day; or "YYYY-MM-DD"
+periods_years: [3, 5, 10, 20]
+base_daily_amount: 100     # Fixed strategy daily contribution
+currency_label: "元"
+execution_timing: "same_day_close"  # "same_day_close" or "next_day_close"
+allow_fractional_shares: true
+commission_bps: 0          # Round-trip commission in basis points (0 = none)
+slippage_bps: 0            # Slippage in basis points (0 = none)
+risk_free_rate: 0.0        # Annual risk-free rate for Sharpe
+report_language: "zh"      # "zh" or "en"
+
+# Dynamic dip-buying DCA rules.
+# Boundary handling (matches the article / screenshots):
+#   daily_return <= -0.02          -> 300
+#   -0.02 < daily_return <= -0.01  -> 200
+#   -0.01 < daily_return <  0.01   -> 100
+#    0.01 <= daily_return < 0.02   -> 50
+#   daily_return >= 0.02           -> 20
+# Each rule matches when: (min_return is null OR daily_return > min_return)
+#                     AND (max_return is null OR daily_return <= max_return)
+dynamic_dca_rules:
+  - min_return: null
+    max_return: -0.02
+    amount: 300
+    label: "跌幅超过2%，定投300"
+  - min_return: -0.02
+    max_return: -0.01
+    amount: 200
+    label: "跌幅1%-2%，定投200"
+  - min_return: -0.01
+    max_return: 0.01
+    amount: 100
+    label: "涨跌幅-1%到1%，定投100"
+  - min_return: 0.01
+    max_return: 0.02
+    amount: 50
+    label: "涨幅1%-2%，定投50"
+  - min_return: 0.02
+    max_return: null
+    amount: 20
+    label: "涨幅超过2%，定投20"
